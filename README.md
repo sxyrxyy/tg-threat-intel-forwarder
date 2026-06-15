@@ -1,51 +1,51 @@
-# Telegram Threat Chat Archiver
+# Telegram Intel Framework
 
-Small Python tool to **inspect** a Telegram bot + chat and **forward/archive messages** from a source chat (e.g. threat actor channel) into your own destination chat.
+A bot-based CLI tool for monitoring a Telegram chat and collecting intelligence to local files. Uses the Telegram Bot API via `pyTelegramBotAPI`.
 
-The script:
+## Setup
 
-- Shows detailed info about:
-  - The bot (`get_me`)
-  - The source chat (`get_chat`)
-  - The chat administrators (`get_chat_administrators`)
-- Prints a **parsed summary**:
-  - Bot name, username, ID
-  - Group title, ID, type
-  - Invite link (if available)
-  - Admin list (bot + humans)
-- Forwards messages from a **source chat** to a **destination chat**, with:
-  - Configurable start / max message ID
-  - Normal mode (step 1) or fast mode (step 15)
-  - Adjustable delay between messages
-  - Basic error handling + backoff
-- Optionally creates a new invite link for the source chat (if the bot is allowed).
-- 
----
+1. Install dependencies:
+   ```
+   pip install pyTelegramBotAPI
+   ```
 
-## Features
+2. Edit the constants at the top of `main.py`:
+   ```python
+   BOT_TOKEN      = "..."          # your bot token from @BotFather
+   SOURCE_CHAT_ID = -100xxxxxxxxx  # chat to monitor (must have the bot as a member/admin)
+   ```
 
-- 📡 **Recon mode**
-  - `get_me` to inspect the bot
-  - `get_chat` to inspect the source chat
-  - `get_chat_administrators` to list admins
-  - Pretty-printed JSON + a clean human-readable summary
+3. Run:
+   ```
+   python main.py
+   ```
 
-- 📥 **Archiving / Forwarding**
-  - Pull messages from a source chat and forward them into your own “archive” chat
-  - Configurable:
-    - `start_msg_id`
-    - `max_msg_id`
-    - `fast_mode` (step 15)
-    - `delay_sec` between forwards
-  - Stops after too many consecutive errors (e.g. reached the end of messages)
+## Menu Options
 
-- 🧩 **Simple configuration**
-  - Bot token, source chat ID, destination chat ID are hardcoded at the top of the script
-  - Runtime prompts for everything else
+| # | Option | Description |
+|---|--------|-------------|
+| 1 | Recon | Calls `getMe`, `getChat`, `getChatAdministrators` for the source chat and any previously discovered chats. Saves to `output/recon.json`. |
+| 2 | Drain updates | Pulls all pending updates via `getUpdates` pagination, saves raw JSON, advances the offset, and discovers new users/chats. Resumes from the last saved offset across runs. |
+| 3 | Generate summary | Parses `updates_raw.json` into a chronological human-readable log. Produces `updates_summary.txt` (original language) and `updates_summary_EN.txt` (with English translations where available). |
+| 4 | Probe entities | Enriches every discovered user and chat: profile photo count, membership status across known chats, invite links, member counts, admin lists. Updates `discovered.json`. |
+| 5 | Download media | Downloads all photos, videos, documents, audio, voice, video notes, and animations from stored updates into `output/media/`. Skips already-downloaded files. Can filter by sender UID. |
+| 6 | Create invite link | Generates a new invite link for the source chat via `createChatInviteLink`. |
 
-- `pyTelegramBotAPI` (for `telebot`)
+## Output Files
 
-Install dependencies:
+```
+output/
+├── offset.txt          # last acknowledged update_id (resume point)
+├── updates_raw.json    # all raw update objects, de-duped and sorted
+├── discovered.json     # users and chats found across all updates
+├── recon.json          # recon results for all known chats
+├── updates_summary.txt     # chronological log (original language)
+├── updates_summary_EN.txt  # chronological log (English translations)
+└── media/              # downloaded media files
+```
 
-```bash
-pip install pyTelegramBotAPI
+## Notes
+
+- The bot must be a member (ideally admin) of `SOURCE_CHAT_ID` to receive updates and run recon.
+- Offset is persisted to `output/offset.txt` so draining resumes where it left off after a restart.
+- Stickers are intentionally excluded from media downloads.
