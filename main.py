@@ -11,11 +11,8 @@ import telebot
 # ==============================
 BOT_TOKEN = "123"
 
-# Chat to forward FROM (threat actor / source)
+# Chat to monitor (threat actor / source)
 SOURCE_CHAT_ID = -123
-
-# Chat to forward TO (your log group / destination)
-DEST_CHAT_ID = -123
 
 # Output directory for all saved files
 OUTPUT_DIR = "output"
@@ -35,11 +32,6 @@ MEDIA_DIR = os.path.join(OUTPUT_DIR, "media")
 # Which media types to auto-download from updates (stickers excluded)
 DOWNLOAD_MEDIA_TYPES = {"photo", "video", "document", "audio", "voice", "video_note", "animation"}
 
-# Forward defaults
-DEFAULT_START_MSG_ID = 1
-DEFAULT_MAX_MSG_ID   = 15_000_000
-DEFAULT_DELAY_SEC    = 0.4
-DEFAULT_FAST_MODE    = False
 # ==============================
 
 BASE_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -242,7 +234,6 @@ def do_recon(tb):
     disc = load_discovered()
     known_chats = {
         SOURCE_CHAT_ID: "Source chat",
-        DEST_CHAT_ID:   "Destination chat",
     }
     # add anything found in previous update drains
     for cid_str, info in disc["chats"].items():
@@ -328,7 +319,7 @@ def drain_updates(acknowledge=True):
     merge_discovered(disc, all_updates)
     save_discovered(disc)
     newly_found_chats = [v for k, v in disc["chats"].items()
-                         if int(k) not in (SOURCE_CHAT_ID, DEST_CHAT_ID)]
+                         if int(k) != SOURCE_CHAT_ID]
     if newly_found_chats:
         print(f"[+] New chats discovered in updates:")
         for c in newly_found_chats:
@@ -853,7 +844,7 @@ def probe_discovered(tb):
     chats = disc.get("chats", {})
 
     # getChat for each discovered chat not already in recon
-    known = {SOURCE_CHAT_ID, DEST_CHAT_ID}
+    known = {SOURCE_CHAT_ID}
     for cid_str, info in chats.items():
         cid = int(cid_str)
         if cid in known:
@@ -887,7 +878,7 @@ def probe_discovered(tb):
         time.sleep(0.5)
 
     # getUserProfilePhotos + getChatMember for each discovered user
-    chat_ids = [SOURCE_CHAT_ID, DEST_CHAT_ID] + [int(k) for k in chats]
+    chat_ids = [SOURCE_CHAT_ID] + [int(k) for k in chats]
     for uid_str, uinfo in users.items():
         uid = int(uid_str)
         if uinfo.get("is_bot"):
@@ -983,41 +974,6 @@ def download_media(filter_uid=None):
 
 
 # ─────────────────────────────────────────────
-# 6. FORWARD MESSAGES
-# ─────────────────────────────────────────────
-
-def forward_messages(tb, start_msg_id, max_msg_id, fast_mode, delay_sec):
-    step = 15 if fast_mode else 1
-    print(f"[*] Fast mode: {'ON (step=15)' if fast_mode else 'OFF (step=1)'}")
-    print(f"[*] Forwarding {SOURCE_CHAT_ID} -> {DEST_CHAT_ID}")
-    print(f"[*] Range: {start_msg_id} .. {max_msg_id}  step={step}")
-    print(f"[*] Delay: {delay_sec}s\n")
-
-    errors_in_row = 0
-    for msg_id in range(start_msg_id, max_msg_id + 1, step):
-        try:
-            tb.forward_message(
-                chat_id=DEST_CHAT_ID,
-                from_chat_id=SOURCE_CHAT_ID,
-                message_id=msg_id,
-            )
-            print(f"[+] Forwarded msg {msg_id}")
-            errors_in_row = 0
-        except telebot.apihelper.ApiException as e:
-            errors_in_row += 1
-            print(f"[-] Msg {msg_id} failed: {e}")
-            if errors_in_row >= 2000:
-                print("[!] 2000 consecutive errors — stopping (likely reached end).")
-                break
-            time.sleep(delay_sec)
-            continue
-        time.sleep(delay_sec)
-        if msg_id % 300 == 0:
-            print("[*] 300 msgs — sleeping 60s...")
-            time.sleep(60)
-
-
-# ─────────────────────────────────────────────
 # MAIN MENU
 # ─────────────────────────────────────────────
 
@@ -1044,8 +1000,7 @@ MENU = """
 ║  3. Generate summary  (txt log)          ║
 ║  4. Probe discovered entities            ║
 ║  5. Download media from updates          ║
-║  6. Forward messages  (source → dest)    ║
-║  7. Create invite link  (source chat)    ║
+║  6. Create invite link  (source chat)    ║
 ║  0. Exit                                 ║
 ╚══════════════════════════════════════════╝"""
 
@@ -1054,7 +1009,7 @@ def main():
     ensure_dirs()
     print("=== Telegram Intel Framework ===")
     print(f"Token : {'SET' if BOT_TOKEN else 'MISSING'}")
-    print(f"Source: {SOURCE_CHAT_ID}   Dest: {DEST_CHAT_ID}")
+    print(f"Source: {SOURCE_CHAT_ID}")
     print_status()
 
     if not BOT_TOKEN:
@@ -1086,13 +1041,6 @@ def main():
             download_media(filter_uid=fuid)
 
         elif choice == "6":
-            start   = ask_int("Start from message ID", default=DEFAULT_START_MSG_ID)
-            max_id  = ask_int("Max message ID", default=DEFAULT_MAX_MSG_ID)
-            fast    = ask_bool("Fast mode (step=15)?", default=DEFAULT_FAST_MODE)
-            delay   = ask_float("Delay (seconds)", default=DEFAULT_DELAY_SEC)
-            forward_messages(tb, start, max_id, fast, delay)
-
-        elif choice == "7":
             try:
                 link = tb.create_chat_invite_link(SOURCE_CHAT_ID)
                 print(f"\n[+] Invite link: {link.invite_link}")
